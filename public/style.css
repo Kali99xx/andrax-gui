@@ -1450,9 +1450,8 @@ body {
         max-width: 70px;
     }
     .desktop-window {
-        width: 90% !important;
-        left: 5% !important;
-        right: 5% !important;
+        max-width: 96vw;
+        max-height: 82vh;
     }
     .start-menu {
         width: 90vw;

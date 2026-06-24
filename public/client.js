@@ -589,6 +589,42 @@ function adjustDesktopSize() {
     desktopArea.style.minWidth = `${maxRight + 20}px`;
 }
 
+// Ensure window fits perfectly within the screen viewport on launch/resize
+function constrainWindowToViewport(win) {
+    if (win.classList.contains('maximized')) return;
+    
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight - 48; // reserve space for taskbar
+    
+    let wWidth = win.offsetWidth || parseFloat(win.style.width) || 500;
+    let wHeight = win.offsetHeight || parseFloat(win.style.height) || 400;
+    let wLeft = parseFloat(win.style.left) || 20;
+    let wTop = parseFloat(win.style.top) || 20;
+    
+    // Maximize limit checks
+    if (wWidth > viewportWidth) {
+        wWidth = viewportWidth - 10;
+        win.style.width = `${wWidth}px`;
+    }
+    if (wHeight > viewportHeight) {
+        wHeight = viewportHeight - 10;
+        win.style.height = `${wHeight}px`;
+    }
+    
+    // Position corrections
+    if (wLeft + wWidth > viewportWidth) {
+        wLeft = Math.max(0, viewportWidth - wWidth - 10);
+        win.style.left = `${wLeft}px`;
+    }
+    if (wTop + wHeight > viewportHeight) {
+        wTop = Math.max(0, viewportHeight - wHeight - 10);
+        win.style.top = `${wTop}px`;
+    }
+    
+    if (wLeft < 0) win.style.left = '0px';
+    if (wTop < 0) win.style.top = '0px';
+}
+
 // Focus window helper
 function focusWindow(windowElement) {
     if (windowElement.classList.contains('active-win')) return;
@@ -611,6 +647,7 @@ function openWindow(id) {
     focusWindow(win);
     
     syncTaskbarItems();
+    constrainWindowToViewport(win);
     adjustDesktopSize();
 }
 
@@ -2013,6 +2050,7 @@ window.addEventListener('DOMContentLoaded', () => {
         initDraggability(w);
         initResizability(w);
         setupWindowControlListeners(w);
+        constrainWindowToViewport(w);
     });
 
     document.querySelectorAll('.shortcut-icon').forEach(sc => {
@@ -2034,6 +2072,11 @@ window.addEventListener('DOMContentLoaded', () => {
 
     window.addEventListener('resize', () => {
         resizeMatrixCanvas();
+        document.querySelectorAll('.desktop-window').forEach(win => {
+            if (!win.classList.contains('hidden') && !win.classList.contains('minimized')) {
+                constrainWindowToViewport(win);
+            }
+        });
         adjustDesktopSize();
     });
 
