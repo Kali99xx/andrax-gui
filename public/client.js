@@ -1129,6 +1129,9 @@ function buildForm(toolName) {
                     if (field.required) {
                         input.required = true;
                     }
+                    if (field.name.toLowerCase().includes('interface')) {
+                        input.setAttribute('list', 'interface-list');
+                    }
                     
                     const icon = document.createElement('i');
                     icon.className = 'fa-solid fa-terminal';
@@ -1204,16 +1207,48 @@ copyCmdBtn.addEventListener('click', () => {
 });
 
 // Run Command Action
-commandForm.addEventListener('submit', (e) => {
+let lastAutoMonitorInterface = null;
+
+commandForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (commandRunning) return;
     
     const cmdStr = generatedCommand.textContent.trim();
     if (!cmdStr) return;
     
-    terminalOutput.innerHTML = '';
-    terminalOutput.innerHTML += `<div class="term-green">[+] Starting job execution...</div>\r\n`;
-    openWindow('window-terminal');
+    // Auto monitor mode support
+    lastAutoMonitorInterface = null;
+    if (selectedTool && selectedTool.name === 'wifite') {
+        const ifaceInput = document.getElementById('field-interface');
+        const ifaceVal = ifaceInput ? ifaceInput.value.trim() : 'wlan0';
+        if (ifaceVal && !ifaceVal.endsWith('mon')) {
+            terminalOutput.innerHTML = '';
+            terminalOutput.innerHTML += `<div class="term-green">[+] Placing interface ${ifaceVal} into monitor mode...</div>\r\n`;
+            openWindow('window-terminal');
+            try {
+                const res = await fetch('/api/interface/monitor-mode', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ iface: ifaceVal, enable: true })
+                });
+                const resData = await res.json();
+                if (resData.success) {
+                    terminalOutput.innerHTML += `<div class="term-green">[+] Monitor mode enabled: ${resData.stdout.trim()}</div>\r\n`;
+                    lastAutoMonitorInterface = ifaceVal;
+                } else {
+                    terminalOutput.innerHTML += `<div class="term-red">[!] Monitor mode activation warning: ${resData.error}</div>\r\n`;
+                }
+            } catch (err) {
+                terminalOutput.innerHTML += `<div class="term-red">[!] Failed to reach monitor-mode service: ${err.message}</div>\r\n`;
+            }
+        }
+    }
+    
+    if (terminalOutput.innerHTML === '') {
+        terminalOutput.innerHTML = '';
+        terminalOutput.innerHTML += `<div class="term-green">[+] Starting job execution...</div>\r\n`;
+        openWindow('window-terminal');
+    }
     
     commandRunning = true;
     runBtn.disabled = true;
@@ -1240,7 +1275,7 @@ socket.on('output', (data) => {
     terminalOutput.scrollTop = terminalOutput.scrollHeight;
 });
 
-socket.on('process_exit', (data) => {
+socket.on('process_exit', async (data) => {
     commandRunning = false;
     runBtn.disabled = false;
     runBtn.classList.remove('hidden');
@@ -1252,6 +1287,29 @@ socket.on('process_exit', (data) => {
     terminalStdin.disabled = true;
     sendStdinBtn.disabled = true;
     terminalStdin.value = '';
+
+    // Auto monitor mode restore support
+    if (lastAutoMonitorInterface) {
+        const restoreIface = lastAutoMonitorInterface;
+        lastAutoMonitorInterface = null;
+        terminalOutput.innerHTML += `<div class="term-green">\r\n[+] Exiting wifite. Reverting interface ${restoreIface} to managed mode...</div>\r\n`;
+        try {
+            const res = await fetch('/api/interface/monitor-mode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ iface: restoreIface, enable: false })
+            });
+            const resData = await res.json();
+            if (resData.success) {
+                terminalOutput.innerHTML += `<div class="term-green">[+] Monitor mode disabled successfully: ${resData.stdout.trim()}</div>\r\n`;
+            } else {
+                terminalOutput.innerHTML += `<div class="term-red">[!] Failed to disable monitor mode: ${resData.error}</div>\r\n`;
+            }
+        } catch (err) {
+            terminalOutput.innerHTML += `<div class="term-red">[!] Failed to restore interface mode: ${err.message}</div>\r\n`;
+        }
+        terminalOutput.scrollTop = terminalOutput.scrollHeight;
+    }
 });
 
 function sendStdin() {
@@ -1927,6 +1985,17 @@ async function updateSysInfo() {
                 ? data.interfaces.join(', ')
                 : 'None detected';
             interfacesEl.textContent = ifaceList;
+            
+            // Populate autocomplete interface-list datalist
+            const datalist = document.getElementById('interface-list');
+            if (datalist && data.interfaces) {
+                datalist.innerHTML = '';
+                data.interfaces.forEach(iface => {
+                    const opt = document.createElement('option');
+                    opt.value = iface;
+                    datalist.appendChild(opt);
+                });
+            }
         }
     } catch (e) {
         console.error("Failed to fetch system monitor specs:", e);

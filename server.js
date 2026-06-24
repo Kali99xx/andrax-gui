@@ -154,6 +154,26 @@ app.get('/api/sysinfo', (req, res) => {
     });
 });
 
+app.post('/api/interface/monitor-mode', (req, res) => {
+    const { iface, enable } = req.body;
+    if (!iface || !/^[a-zA-Z0-9_\-]+$/.test(iface)) {
+        return res.status(400).json({ error: "Invalid interface name" });
+    }
+
+    const command = enable 
+        ? `sudo airmon-ng start ${iface}` 
+        : `sudo airmon-ng stop ${iface}`;
+
+    console.log(`[MonitorMode] Executing: ${command}`);
+    exec(command, (err, stdout, stderr) => {
+        if (err) {
+            console.error(`[MonitorMode] Error: ${err.message}`);
+            return res.status(500).json({ error: err.message, stderr });
+        }
+        res.json({ success: true, stdout });
+    });
+});
+
 app.post('/api/afos/update', (req, res) => {
     exec('sudo afos --update-all || sudo afos --update', (err, stdout, stderr) => {
         if (err) {
